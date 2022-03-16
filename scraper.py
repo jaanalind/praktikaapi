@@ -1,7 +1,9 @@
+from typing_extensions import Self
 import requests
-from time import sleep
+from time import time, sleep
 #!/usr/bin/python
 import psycopg2
+import datetime
 
 
 class DBData:
@@ -14,9 +16,8 @@ class DBData:
             data = response.json()
             return data
         except:
-            raise Exception("Can't get data from: "+self.URL)
+            print("Can't get data from: "+self.URL)
 
-    
     def systemData(self):
         data = self.dataAsDict()
         data = data['data']['real']
@@ -29,67 +30,106 @@ class DBData:
 
 
 class dataDictToDB:
-    def __init__(self, dataDict):
+    def __init__(self, dataDict,cur):
         self.dataDict = dataDict
-    def connectToDB(self):
-        try:
-            conn = psycopg2.connect(
-                host="db",
-                database="postgres",
-                user="postgres",
-                password="dbadmin")
-            return conn
-        except:
-            raise Exception("Unable to connect")
-
-            
+        self.cur = cur
     
     def dataToDB(self):
-        conn = self.connectToDB()
-        cur = conn.cursor()
         for values in self.dataDict:
-        #thought about using a tuple, so i could also insert price data first, but if i always to it the same way, i thought it would be pointless 
-            cur.execute("""
+            self.cur.execute("""
                 INSERT INTO elering_data (production, consumption, ts)
                 VALUES (%(production)s, %(consumption)s, to_timestamp(%(ts)s));
         """,
         {'production': values['production'], 'consumption': values['consumption'], 'ts':values['timestamp'] })
 
-        conn.commit()
-        cur.close()
-        conn.close()
-
-    def addToDB(self):
-        conn = self.connectToDB()
-        cur = conn.cursor()
-        
+    def addPriceToDB(self):
         for values in self.dataDict:
-            cur.execute("""
+            self.cur.execute("""
                 UPDATE elering_data
                 SET price = %(price)s
                 WHERE ts = to_timestamp(%(ts)s);
         """,
         {'price': values['price'], 'ts':values['timestamp'] })
-        conn.commit()
-        cur.close()
-        conn.close()
-
-systemData = DBData("https://dashboard.elering.ee/api/system/with-plan?start=2021-03-15T20%3A59%3A59.999Z&end=2022-03-15T20%3A59%3A59.999Z")
-systemData = systemData.systemData()
-systemDataToDB = dataDictToDB(systemData)
-systemDataToDB.dataToDB()
-
-priceData = DBData("https://dashboard.elering.ee/api/nps/price?start=2021-03-15T20%3A59%3A59.999Z&end=2022-03-15T20%3A59%3A59.999Z")
-priceData = priceData.priceData()
-priceDataToDB = dataDictToDB(priceData)
-priceDataToDB.addToDB()
 
 
+class DBinfo:
+    def isEmpty(cur):
+        cur.execute("""SELECT count(*) as tot FROM elering_data""")
+        if cur.fetchall() != 0:
+            return True
+        else:
+            return False
+
+    def lastID(cur):#gets last timestamp so i can get data since last timestamp taken
+        cur.execute("""SELECT extract(epoch from ((SELECT ts
+        FROM elering_data
+        ORDER BY id DESC 
+        LIMIT 1) )) from elering_data limit 1""")
+
+        return int(cur.fetchone()[0])
+
+class URLCreator:
+    def timestampToDatetime(ts):
+        date_time = datetime.datetime.fromtimestamp( ts )  
+        return(str(date_time).replace(" ", 'T')+"Z")
+        
+    def createURL(ts):
+        URL = "?start="+URLCreator.timestampToDatetime(ts)
+        return URL
+
+         
+def connectToDB():
+    
+    try:
+        conn = psycopg2.connect(
+            host="db",
+            database="postgres",
+            user="postgres",
+            password="dbadmin")
+        return conn
+    except Exception as e:
+        print(e)
 
 
-#URL = "https://dashboard.elering.ee/api/system?start=2021-03-15T20%3A59%3A59.999Z&end=2022-03-15T20%3A59%3A59.999Z"
-#URL = "https://dashboard.elering.ee/api/nps/price"
-#https://dashboard.elering.ee/api/system
+
+def main():
+    conn = connectToDB()
+    conn.autocommit = True
+    cur = conn.cursor()
+
+    if DBinfo.isEmpty(cur):
+        systemData = DBData("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(time()-31536000))#31536000 is unix epoch 1 year, so i will get 1 year data
+        systemData = systemData.systemData()
+        systemDataToDB = dataDictToDB(systemData,cur)
+        systemDataToDB.dataToDB()
+
+        priceData = DBData("https://dashboard.elering.ee/api/nps/price"+URLCreator.createURL(time()-31536000))
+        priceData = priceData.priceData()
+        priceDataToDB = dataDictToDB(priceData,cur)
+        priceDataToDB.addPriceToDB()
+    
+    while True:
+        try:
+            systemData = DBData("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(DBinfo.lastID(cur)))
+            systemData = systemData.systemData()
+            systemDataToDB = dataDictToDB(systemData,cur)
+            systemDataToDB.dataToDB()
+
+            priceData = DBData("https://dashboard.elering.ee/api/nps/price"+URLCreator.createURL(DBinfo.lastID(cur)))
+            priceData = priceData.priceData()
+            priceDataToDB = dataDictToDB(priceData,cur)
+            priceDataToDB.addPriceToDB()
+            sleep(60*60)
+        except Exception as e:
+            sleep(10)
+            print(e)
+            connectToDB()
+
+
+if __name__ == "__main__":
+    main()
+
+
 
 
 
