@@ -3,5 +3,5 @@ CREATE TABLE elering_data (
     production real,
     consumption real,
 	price real,
-	ts timestamp
+	ts timestamptz
 );

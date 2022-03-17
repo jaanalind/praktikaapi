@@ -1,4 +1,4 @@
-from typing_extensions import Self
+
 import requests
 from time import time, sleep
 #!/usr/bin/python
@@ -55,7 +55,7 @@ class dataDictToDB:
 class DBinfo:
     def isEmpty(cur):
         cur.execute("""SELECT count(*) as tot FROM elering_data""")
-        if cur.fetchall() != 0:
+        if cur.fetchone()[0] == 0:
             return True
         else:
             return False
@@ -89,16 +89,24 @@ def connectToDB():
         return conn
     except Exception as e:
         print(e)
-
+        return False
+        
 
 
 def main():
-    conn = connectToDB()
+    while True:
+        conn = connectToDB()
+        if not conn:
+            sleep(10)
+        else:
+            break
+    
     conn.autocommit = True
     cur = conn.cursor()
 
     if DBinfo.isEmpty(cur):
         systemData = DBData("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(time()-31536000))#31536000 is unix epoch 1 year, so i will get 1 year data
+        print("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(time()-31536000))
         systemData = systemData.systemData()
         systemDataToDB = dataDictToDB(systemData,cur)
         systemDataToDB.dataToDB()
@@ -109,17 +117,19 @@ def main():
         priceDataToDB.addPriceToDB()
     
     while True:
-        try:
-            systemData = DBData("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(DBinfo.lastID(cur)))
+        try:#add 600000, so it would search 10 minutes after last timestamp
+            systemData = DBData("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(DBinfo.lastID(cur)+600000))
+            print("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(DBinfo.lastID(cur)))
             systemData = systemData.systemData()
             systemDataToDB = dataDictToDB(systemData,cur)
             systemDataToDB.dataToDB()
-
-            priceData = DBData("https://dashboard.elering.ee/api/nps/price"+URLCreator.createURL(DBinfo.lastID(cur)))
+            
+            priceData = DBData("https://dashboard.elering.ee/api/nps/price"+URLCreator.createURL(DBinfo.lastID(cur)+600000))
+            print("https://dashboard.elering.ee/api/nps/price"+URLCreator.createURL(DBinfo.lastID(cur)))
             priceData = priceData.priceData()
             priceDataToDB = dataDictToDB(priceData,cur)
             priceDataToDB.addPriceToDB()
-            sleep(60*60)
+            sleep(3600)
         except Exception as e:
             sleep(10)
             print(e)
