@@ -1,7 +1,6 @@
-FROM postgres:latest
-RUN apt-get update && apt-get install -y python3 python3-pip
-RUN apt-get -y install python3.7-dev
-RUN apt-get install
-RUN pip install requests
-COPY . /app
-CMD python /app/scraper.py
+FROM python:latest
+WORKDIR /praktikaapi
+ADD requirements.txt requirements.txt
+RUN pip install -r requirements.txt
+COPY scraper.py scraper.py
+CMD ["python", "-u", "scraper.py"]
