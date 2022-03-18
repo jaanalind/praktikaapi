@@ -1,0 +1,4 @@
+python-dateutil
+flask
+flask_restx
+psycopg2

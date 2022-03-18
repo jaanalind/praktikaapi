@@ -5,7 +5,9 @@ from time import time, sleep
 import psycopg2
 import datetime
 
-
+"""
+Gets data from elering api
+"""
 class DBData:
     def __init__(self, URL):
         self.URL = URL
@@ -27,8 +29,9 @@ class DBData:
         data = self.dataAsDict()
         data = data['data']['ee']
         return data
-
-
+"""
+Puts elering data to postgres DB
+"""
 class dataDictToDB:
     def __init__(self, dataDict,cur):
         self.dataDict = dataDict
@@ -51,7 +54,9 @@ class dataDictToDB:
         """,
         {'price': values['price'], 'ts':values['timestamp'] })
 
-
+"""
+Returns info about current state of DB
+"""
 class DBinfo:
     def isEmpty(cur):
         cur.execute("""SELECT count(*) as tot FROM elering_data""")
@@ -59,15 +64,19 @@ class DBinfo:
             return True
         else:
             return False
-
-    def lastID(cur):#gets last timestamp so i can get data since last timestamp taken
+    """
+    Returns last timestamp in DB
+    """
+    def lastID(cur):
         cur.execute("""SELECT extract(epoch from ((SELECT ts
         FROM elering_data
         ORDER BY id DESC 
         LIMIT 1) )) from elering_data limit 1""")
 
         return int(cur.fetchone()[0])
-
+"""
+Creates URL for elering api queries
+"""
 class URLCreator:
     def timestampToDatetime(ts):
         date_time = datetime.datetime.fromtimestamp( ts )  
@@ -77,11 +86,12 @@ class URLCreator:
         URL = "?start="+URLCreator.timestampToDatetime(ts)
         return URL
 
-         
+   
 def connectToDB():
     
     try:
         conn = psycopg2.connect(
+            #it should be in docker enviroment as a file but didn't have time for that
             host="db",
             database="postgres",
             user="postgres",
@@ -103,10 +113,9 @@ def main():
     
     conn.autocommit = True
     cur = conn.cursor()
-
+    #if DB is empty it gets 1 year data first
     if DBinfo.isEmpty(cur):
         systemData = DBData("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(time()-31536000))#31536000 is unix epoch 1 year, so i will get 1 year data
-        print("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(time()-31536000))
         systemData = systemData.systemData()
         systemDataToDB = dataDictToDB(systemData,cur)
         systemDataToDB.dataToDB()
@@ -119,13 +128,11 @@ def main():
     while True:
         try:#add 600000, so it would search 10 minutes after last timestamp
             systemData = DBData("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(DBinfo.lastID(cur)+600000))
-            print("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(DBinfo.lastID(cur)))
             systemData = systemData.systemData()
             systemDataToDB = dataDictToDB(systemData,cur)
             systemDataToDB.dataToDB()
             
             priceData = DBData("https://dashboard.elering.ee/api/nps/price"+URLCreator.createURL(DBinfo.lastID(cur)+600000))
-            print("https://dashboard.elering.ee/api/nps/price"+URLCreator.createURL(DBinfo.lastID(cur)))
             priceData = priceData.priceData()
             priceDataToDB = dataDictToDB(priceData,cur)
             priceDataToDB.addPriceToDB()
