@@ -116,7 +116,6 @@ def main():
     #if DB is empty it gets 1 year data first
     if DBinfo.isEmpty(cur):
         systemData = DBData("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(time()-31536000))#31536000 is unix epoch 1 year, so i will get 1 year data
-        print("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(time()-31536000))
         systemData = systemData.systemData()
         systemDataToDB = dataDictToDB(systemData,cur)
         systemDataToDB.dataToDB()
@@ -129,13 +128,11 @@ def main():
     while True:
         try:#add 600000, so it would search 10 minutes after last timestamp
             systemData = DBData("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(DBinfo.lastID(cur)+600000))
-            print("https://dashboard.elering.ee/api/system/with-plan"+URLCreator.createURL(DBinfo.lastID(cur)))
             systemData = systemData.systemData()
             systemDataToDB = dataDictToDB(systemData,cur)
             systemDataToDB.dataToDB()
             
             priceData = DBData("https://dashboard.elering.ee/api/nps/price"+URLCreator.createURL(DBinfo.lastID(cur)+600000))
-            print("https://dashboard.elering.ee/api/nps/price"+URLCreator.createURL(DBinfo.lastID(cur)))
             priceData = priceData.priceData()
             priceDataToDB = dataDictToDB(priceData,cur)
             priceDataToDB.addPriceToDB()
